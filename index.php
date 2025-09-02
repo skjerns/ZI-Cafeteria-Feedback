@@ -6,14 +6,36 @@ date_default_timezone_set('UTC');
 $currentDayOfWeek = date('N');
 $today = date('Y-m-d');
 
-// Read menu data
-$menuData = [];
-if (($handle = fopen("data/menu.csv", "r")) !== FALSE) {
-    while (($data = fgetcsv($handle, 1000, ",")) !== FALSE) {
-        $menuData[] = $data;
+// Read menu data from images in /data directory
+$menuByDate = [];
+$dataFiles = scandir('data');
+foreach ($dataFiles as $file) {
+    if (preg_match('/^dish(\d+)_(\d{4}-\d{2}-\d{2})\.png$/', $file, $matches)) {
+        $dishNumber = $matches[1];
+        $date = $matches[2];
+
+        // Group dishes by date
+        if (!isset($menuByDate[$date])) {
+            $menuByDate[$date] = [];
+        }
+
+        // Improved dish name extraction
+        $dishName = "Dish " . $dishNumber;
+        if ($dishNumber == 1) {
+            $dishName = "Veggy";
+        } elseif ($dishNumber == 2) {
+            $dishName = "Meat";
+        }
+
+        $menuByDate[$date][] = [
+            'name' => $dishName,
+            'image' => 'data/' . $file,
+            'option' => count($menuByDate[$date]) + 1
+        ];
     }
-    fclose($handle);
 }
+// Sort menus by date
+krsort($menuByDate);
 
 // Check if user has a cookie, if not create one
 if (!isset($_COOKIE['user_id'])) {
@@ -55,55 +77,59 @@ if (file_exists('data/ratings.csv')) {
         </header>
         
         <main>
-            <?php foreach ($menuData as $index => $menu): ?>
-                <?php 
-                $menuDate = $menu[0];
-                $dayName = date('l', strtotime($menuDate));
-                $isRatable = strtotime($menuDate) <= strtotime($today);
-                ?>
-                <div class="menu-card <?php echo $isRatable ? 'ratable' : 'future'; ?>">
-                    <div class="day-header">
-                        <h2><?php echo $dayName; ?> <span class="date"><?php echo $menuDate; ?></span></h2>
-                        <?php if (!$isRatable): ?>
-                            <span class="future-tag">Coming Soon</span>
-                        <?php endif; ?>
-                    </div>
-                    
-                    <div class="menu-options">
-                        <?php for ($i = 1; $i <= 2; $i++): ?>
-                            <div class="menu-option">
-                                <h3>Option <?php echo $i; ?>: <?php echo $menu[$i]; ?></h3>
-                                
-                                <?php if ($isRatable): ?>
-                                    <?php 
-                                    $ratingKey = $menuDate . '-' . $i;
-                                    $userRating = isset($userRatings[$ratingKey]) ? $userRatings[$ratingKey] : 0;
-                                    ?>
-                                    <div class="rating-container">
-                                        <div class="stars" data-date="<?php echo $menuDate; ?>" data-option="<?php echo $i; ?>">
-                                            <?php for ($star = 1; $star <= 5; $star++): ?>
-                                                <i class="fa<?php echo $star <= $userRating ? ' fa-star' : 'r fa-star'; ?>" data-rating="<?php echo $star; ?>"></i>
-                                            <?php endfor; ?>
+            <?php if (empty($menuByDate)): ?>
+                <p>No menus found. Please check back later.</p>
+            <?php else: ?>
+                <?php foreach ($menuByDate as $date => $dishes): ?>
+                    <?php
+                    $dayName = date('l', strtotime($date));
+                    $isRatable = strtotime($date) <= strtotime($today);
+                    ?>
+                    <div class="menu-card <?php echo $isRatable ? 'ratable' : 'future'; ?>">
+                        <div class="day-header">
+                            <h2><?php echo $dayName; ?> <span class="date"><?php echo $date; ?></span></h2>
+                            <?php if (!$isRatable): ?>
+                                <span class="future-tag">Coming Soon</span>
+                            <?php endif; ?>
+                        </div>
+
+                        <div class="menu-options">
+                            <?php foreach ($dishes as $dish): ?>
+                                <div class="menu-option">
+                                    <img src="<?php echo $dish['image']; ?>" alt="<?php echo $dish['name']; ?>" style="width:100%;height:auto;border-radius:var(--border-radius);">
+                                    <h3><?php echo $dish['name']; ?></h3>
+
+                                    <?php if ($isRatable): ?>
+                                        <?php
+                                        $ratingKey = $date . '-' . $dish['option'];
+                                        $userRating = isset($userRatings[$ratingKey]) ? $userRatings[$ratingKey] : 0;
+                                        ?>
+                                        <div class="rating-container">
+                                            <div class="stars" data-date="<?php echo $date; ?>" data-option="<?php echo $dish['option']; ?>">
+                                                <?php for ($star = 1; $star <= 5; $star++): ?>
+                                                    <i class="fa<?php echo $star <= $userRating ? ' fa-star' : 'r fa-star'; ?>" data-rating="<?php echo $star; ?>"></i>
+                                                <?php endfor; ?>
+                                            </div>
+                                            <div class="rating-status">
+                                                <?php if ($userRating > 0): ?>
+                                                    <span class="rated">You rated this <?php echo $userRating; ?> star<?php echo $userRating > 1 ? 's' : ''; ?></span>
+                                                <?php else: ?>
+                                                    <span class="not-rated">Not rated yet</span>
+                                                <?php endif; ?>
+                                            </div>
                                         </div>
-                                        <div class="rating-status">
-                                            <?php if ($userRating > 0): ?>
-                                                <span class="rated">You rated this <?php echo $userRating; ?> star<?php echo $userRating > 1 ? 's' : ''; ?></span>
-                                            <?php else: ?>
-                                                <span class="not-rated">Not rated yet</span>
-                                            <?php endif; ?>
+
+                                        <div class="comment-container">
+                                            <textarea placeholder="Add a comment (optional)" class="comment" data-date="<?php echo $date; ?>" data-option="<?php echo $dish['option']; ?>"></textarea>
+                                            <button class="submit-rating" data-date="<?php echo $date; ?>" data-option="<?php echo $dish['option']; ?>">Submit Rating</button>
                                         </div>
-                                    </div>
-                                    
-                                    <div class="comment-container">
-                                        <textarea placeholder="Add a comment (optional)" class="comment" data-date="<?php echo $menuDate; ?>" data-option="<?php echo $i; ?>"></textarea>
-                                        <button class="submit-rating" data-date="<?php echo $menuDate; ?>" data-option="<?php echo $i; ?>">Submit Rating</button>
-                                    </div>
-                                <?php endif; ?>
-                            </div>
-                        <?php endfor; ?>
+                                    <?php endif; ?>
+                                </div>
+                            <?php endforeach; ?>
+                        </div>
                     </div>
-                </div>
-            <?php endforeach; ?>
+                <?php endforeach; ?>
+            <?php endif; ?>
         </main>
         
         <footer>
